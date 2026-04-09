@@ -1,0 +1,100 @@
+<% content_for :head do %>
+  <%= vite_typescript_tag "editor" %>
+<% end %>
+
+<div id="editor-toolbar">
+  <a href="/editor" class="back-link">&larr; Maps</a>
+  <span class="map-title"><%= @map.name %></span>
+  <div class="toolbar-group">
+    <label>Tool:</label>
+    <select id="editor-tool">
+      <option value="paint">Paint</option>
+      <option value="erase">Erase</option>
+      <option value="spawn">Set Spawn</option>
+      <option value="wall">Toggle Wall</option>
+    </select>
+  </div>
+  <div class="toolbar-group">
+    <label>Tile:</label>
+    <input type="number" id="editor-tile-id" value="0" min="0" style="width:60px" />
+  </div>
+  <div class="toolbar-group">
+    <label>Video:</label>
+    <select id="editor-video-mode">
+      <option value="proximity" <%= "selected" if @map.video_mode == "proximity" %>>Proximity</option>
+      <option value="explicit" <%= "selected" if @map.video_mode == "explicit" %>>Explicit</option>
+    </select>
+  </div>
+  <button id="editor-save">Save</button>
+</div>
+
+<canvas id="editor-canvas"></canvas>
+
+<script>
+  window.__HELLTOWN_EDITOR__ = {
+    map: <%= raw @map.to_json %>,
+    csrfToken: "<%= form_authenticity_token %>"
+  };
+</script>
+
+<style>
+  #editor-toolbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 44px;
+    background: #1a1008;
+    border-bottom: 1px solid #6b4c2a;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 16px;
+    z-index: 100;
+    font-size: 13px;
+  }
+  .back-link {
+    color: #d4a855;
+    text-decoration: none;
+  }
+  .back-link:hover { text-decoration: underline; }
+  .map-title {
+    color: #d4a855;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+  .toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .toolbar-group label { color: #8b7355; }
+  .toolbar-group select, .toolbar-group input {
+    background: #0d0804;
+    border: 1px solid #6b4c2a;
+    color: #d4a855;
+    padding: 4px 8px;
+    font-family: inherit;
+    font-size: 12px;
+  }
+  #editor-save {
+    margin-left: auto;
+    padding: 6px 20px;
+    background: #6b4c2a;
+    border: 1px solid #d4a855;
+    color: #d4a855;
+    font-family: inherit;
+    cursor: pointer;
+    text-transform: uppercase;
+  }
+  #editor-save:hover { background: #8b6340; }
+  #editor-canvas {
+    display: block;
+    width: 100%;
+    height: calc(100vh - 44px);
+    margin-top: 44px;
+    image-rendering: pixelated;
+    cursor: crosshair;
+  }
+</style>

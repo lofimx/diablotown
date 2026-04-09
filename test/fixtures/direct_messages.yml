@@ -1,0 +1,4 @@
+hello:
+  sender_id: <%= ActiveRecord::FixtureSet.identify(:alice) %>
+  recipient_id: <%= ActiveRecord::FixtureSet.identify(:bob) %>
+  content: "Hello Bob!"

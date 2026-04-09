@@ -1,0 +1,58 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: diablo
+      POSTGRES_PASSWORD: diablo_dev_password
+      POSTGRES_DB: diablo_development
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U diablo -d diablo_development"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: ..
+      dockerfile: dev/Dockerfile.dev
+    command: bash -c "bin/rails db:prepare && bin/rails server -b 0.0.0.0"
+    volumes:
+      - ..:/rails
+      - bundle_cache:/usr/local/bundle
+      - node_modules:/rails/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      RAILS_ENV: development
+      DB_HOST: db
+      POSTGRES_USER: diablo
+      POSTGRES_PASSWORD: diablo_dev_password
+    depends_on:
+      db:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+
+  vite:
+    build:
+      context: ..
+      dockerfile: dev/Dockerfile.dev
+    command: bin/vite dev
+    volumes:
+      - ..:/rails
+      - node_modules:/rails/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      RAILS_ENV: development
+    depends_on:
+      - web
+
+volumes:
+  postgres_data:
+  bundle_cache:
+  node_modules:

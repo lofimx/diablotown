@@ -1,0 +1,54 @@
+# syntax=docker/dockerfile:1
+# Development Dockerfile for HellTown
+
+ARG RUBY_VERSION=3.4.8
+FROM docker.io/library/ruby:$RUBY_VERSION-slim
+
+# Rails app lives here
+WORKDIR /rails
+
+# Install packages needed for development
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y \
+    build-essential \
+    curl \
+    git \
+    libpq-dev \
+    libvips \
+    libjemalloc2 \
+    libyaml-dev \
+    nodejs \
+    npm \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists /var/cache/apt/archives
+
+# Set development environment
+ENV RAILS_ENV="development" \
+    BUNDLE_PATH="/usr/local/bundle"
+
+# Install bundler
+RUN gem install bundler
+
+# Copy dependency files first (for better caching)
+COPY Gemfile Gemfile.lock ./
+
+# Install gems
+RUN bundle install
+
+# Copy package files
+COPY package.json package-lock.json ./
+
+# Install Node dependencies
+RUN npm ci
+
+# Copy application code
+COPY . .
+
+# Precompile bootsnap for faster boot
+RUN bundle exec bootsnap precompile --gemfile app/ lib/
+
+# Expose ports
+EXPOSE 3000 5173
+
+# Keep container running
+CMD ["bash"]

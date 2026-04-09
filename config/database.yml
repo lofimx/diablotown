@@ -1,0 +1,49 @@
+# PostgreSQL 17
+#   gem "pg"
+#
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+
+development:
+  primary:
+    <<: *default
+    host: <%= ENV.fetch("DB_HOST", "localhost") %>
+    username: <%= ENV.fetch("POSTGRES_USER", "diablo") %>
+    password: <%= ENV["POSTGRES_PASSWORD"] %>
+    database: diablo_development
+  queue:
+    <<: *default
+    host: <%= ENV.fetch("DB_HOST", "localhost") %>
+    username: <%= ENV.fetch("POSTGRES_USER", "diablo") %>
+    password: <%= ENV["POSTGRES_PASSWORD"] %>
+    database: diablo_development_queue
+    migrations_paths: db/queue_migrate
+
+test:
+  <<: *default
+  database: diablo_test
+  host: <%= ENV.fetch("DB_HOST", "localhost") %>
+  username: <%= ENV.fetch("POSTGRES_USER", "diablo") %>
+  password: <%= ENV["POSTGRES_PASSWORD"] %>
+
+production:
+  primary: &primary_production
+    <<: *default
+    host: <%= ENV["DB_HOST"] %>
+    username: <%= ENV.fetch("POSTGRES_USER", "diablo") %>
+    password: <%= ENV["POSTGRES_PASSWORD"] %>
+    database: diablo_production
+  cache:
+    <<: *primary_production
+    database: diablo_production_cache
+    migrations_paths: db/cache_migrate
+  queue:
+    <<: *primary_production
+    database: diablo_production_queue
+    migrations_paths: db/queue_migrate
+  cable:
+    <<: *primary_production
+    database: diablo_production_cable
+    migrations_paths: db/cable_migrate

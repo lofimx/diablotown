@@ -1,0 +1,9 @@
+alice:
+  username: alice
+  token: aaaa1111bbbb2222cccc3333dddd4444eeee5555ffff6666aaaa1111bbbb2222
+  character_class: warrior
+
+bob:
+  username: bob
+  token: 1111aaaa2222bbbb3333cccc4444dddd5555eeee6666ffff1111aaaa2222bbbb
+  character_class: rogue

@@ -1,0 +1,18 @@
+<% unless current_user %>
+  <script>window.location.href = "/";</script>
+<% end %>
+
+<div id="hud">
+  <span class="player-name" id="hud-username"><%= current_user&.username %></span>
+  <span class="map-name"><%= @map.name %></span>
+</div>
+
+<canvas id="game-canvas"></canvas>
+
+<script>
+  window.__HELLTOWN__ = {
+    user: <%= raw(current_user ? { username: current_user.username }.to_json : "null") %>,
+    map: <%= raw(@map.to_json) %>,
+    csrfToken: "<%= form_authenticity_token %>"
+  };
+</script>

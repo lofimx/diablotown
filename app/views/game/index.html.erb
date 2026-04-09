@@ -1,0 +1,383 @@
+<div id="identity-overlay" style="<%= current_user ? 'display:none' : '' %>">
+  <div id="identity-form">
+    <h1>DiabloTown</h1>
+
+    <% if !current_user && token_user %>
+      <%# Token cookie present but no active session — offer one-click resume %>
+      <div id="identity-resume">
+        <p>Welcome back, <strong><%= token_user.username %></strong>.</p>
+        <button id="resume-submit">Enter</button>
+        <p class="identity-switch">Not you? <a href="#" id="show-create-from-resume">Create a new account</a> or <a href="#" id="show-import-from-resume">log in with a different token</a></p>
+      </div>
+    <% end %>
+
+    <div id="identity-create" style="<%= (!current_user && token_user) ? 'display:none' : '' %>">
+      <p>Enter the dungeon. Choose your name and class.</p>
+      <input type="text" id="username-input" placeholder="Username" maxlength="20" autocomplete="off">
+      <select id="class-select">
+        <option value="warrior">Warrior</option>
+        <option value="rogue">Rogue</option>
+        <option value="sorcerer">Sorcerer</option>
+      </select>
+      <button id="username-submit">Enter</button>
+      <div id="identity-error" class="error"></div>
+      <p class="identity-switch">Already have a token? <a href="#" id="show-import">Log in</a></p>
+    </div>
+
+    <div id="identity-import" style="display:none">
+      <p>Paste your token to resume your session.</p>
+      <input type="text" id="token-input" placeholder="Token" autocomplete="off">
+      <button id="token-submit">Log in</button>
+      <div id="import-error" class="error"></div>
+      <p class="identity-switch">New here? <a href="#" id="show-create">Create account</a></p>
+    </div>
+  </div>
+</div>
+
+<div id="admin-overlay" style="display:none">
+  <div id="admin-form">
+    <input type="password" id="admin-password" autocomplete="off">
+    <div id="admin-form-buttons">
+      <button id="admin-cancel">Cancel</button>
+    </div>
+    <div id="admin-error" class="error"></div>
+  </div>
+</div>
+
+<div id="hud" style="<%= current_user ? '' : 'display:none' %>">
+  <div class="hud-left">
+    <span class="map-name">Tristram</span>
+    <div id="user-list">
+      <span id="user-count">0 Users Online:</span>
+      <ul id="user-names"></ul>
+    </div>
+  </div>
+  <div class="hud-right">
+    <button id="end-call-btn" style="display:none">End Call</button>
+    <button id="debug-btn" style="display:none">Debug</button>
+    <div id="player-menu-wrapper">
+      <button id="player-menu-btn"><%= current_user&.username %></button>
+      <div id="player-menu" style="display:none">
+        <button class="menu-item" id="menu-settings">Settings</button>
+        <button class="menu-item" id="menu-token">Token</button>
+        <button class="menu-item" id="menu-admin">Admin Login</button>
+        <button class="menu-item" id="menu-editor" style="display:none">Map Editor</button>
+        <button class="menu-item" id="menu-logout">Logout</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="token-modal" style="display:none">
+  <p>This is your login token. Save it somewhere safe — it's the only way to recover your account on a different device.</p>
+  <code id="token-display"><%= current_user&.token %></code>
+  <button id="token-copy">Copy</button>
+</div>
+
+<div id="debug-menu" style="display:none">
+  <label><input type="checkbox" id="debug-tile-overlay"> Tile classification overlay</label>
+  <button id="debug-regen-map" style="margin-top:8px;width:100%;padding:4px 8px;background:#6b4c2a;border:1px solid #8b7355;color:#c4a882;font-family:inherit;font-size:11px;cursor:pointer;text-transform:uppercase;letter-spacing:1px;">Regenerate map</button>
+</div>
+
+<div id="permission-overlay" style="display:none">
+  <div id="permission-form">
+    <h2>Video Chat</h2>
+    <p>DiabloTown uses your microphone and camera for video chat with other players. Grant access to enable video calls.</p>
+    <button id="permission-ok">OK</button>
+  </div>
+</div>
+
+<div id="settings-overlay" style="display:none">
+  <div id="settings-form">
+    <h2>Settings</h2>
+    <div class="settings-row">
+      <span class="settings-label">Microphone</span>
+      <button id="settings-mic" class="settings-toggle" data-enabled="false">Enable</button>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Video</span>
+      <button id="settings-video" class="settings-toggle" data-enabled="false">Enable</button>
+    </div>
+    <div id="settings-warning" style="display:none">Video Calls Require Microphone OR Video</div>
+    <button id="settings-close" class="settings-close-btn">Close</button>
+  </div>
+</div>
+
+<canvas id="game-canvas"></canvas>
+
+<script>
+  window.__HELLTOWN__ = {
+    user: <%= raw(current_user ? { username: current_user.username, character_class: current_user.character_class || "warrior", last_map_id: current_user.last_map_id, last_x: current_user.last_x, last_y: current_user.last_y }.to_json : "null") %>,
+    maps: <%= raw(@maps.select(:id, :name, :tileset, :video_mode).to_json) %>,
+    csrfToken: "<%= form_authenticity_token %>"
+  };
+
+  window.__HELLTOWN_DEBUG__ = { tileOverlay: false };
+
+  // --- Admin state ---
+  let isAdmin = false;
+
+  function updateAdminUI() {
+    document.getElementById("debug-btn").style.display = isAdmin ? "" : "none";
+    document.getElementById("menu-editor").style.display = isAdmin ? "" : "none";
+    document.getElementById("menu-admin").textContent = isAdmin ? "Admin Logout" : "Admin Login";
+  }
+
+  async function checkAdmin() {
+    try {
+      const res = await fetch("/session/is_admin");
+      isAdmin = res.ok;
+    } catch { isAdmin = false; }
+    updateAdminUI();
+  }
+
+  if (window.__HELLTOWN__.user) checkAdmin();
+
+  // --- Identity overlay ---
+  function showOnly(panelId) {
+    for (const id of ["identity-resume", "identity-create", "identity-import"]) {
+      const el = document.getElementById(id);
+      if (el) el.style.display = id === panelId ? "" : "none";
+    }
+  }
+
+  document.getElementById("resume-submit")?.addEventListener("click", async () => {
+    try {
+      const res = await fetch("/session/resume", {
+        method: "POST",
+        headers: { "X-CSRF-Token": window.__HELLTOWN__.csrfToken },
+      });
+      if (res.ok) { window.location.reload(); return; }
+    } catch {}
+  });
+  document.getElementById("show-create-from-resume")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    showOnly("identity-create");
+  });
+  document.getElementById("show-import-from-resume")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    showOnly("identity-import");
+  });
+
+  document.getElementById("show-import")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    showOnly("identity-import");
+  });
+  document.getElementById("show-create")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    showOnly("identity-create");
+  });
+
+  // Token import
+  document.getElementById("token-submit")?.addEventListener("click", async () => {
+    const token = document.getElementById("token-input").value.trim();
+    if (!token) return;
+    const errorEl = document.getElementById("import-error");
+    errorEl.textContent = "";
+    try {
+      const res = await fetch("/session/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": window.__HELLTOWN__.csrfToken },
+        body: JSON.stringify({ token }),
+      });
+      const data = await res.json();
+      if (!res.ok) { errorEl.textContent = data.error || "Invalid token"; return; }
+      window.location.reload();
+    } catch { errorEl.textContent = "Connection error"; }
+  });
+  document.getElementById("token-input")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("token-submit").click();
+  });
+
+  // --- Player menu ---
+  function closeAllPopups() {
+    document.getElementById("player-menu").style.display = "none";
+    document.getElementById("token-modal").style.display = "none";
+    document.getElementById("debug-menu").style.display = "none";
+  }
+
+  document.getElementById("player-menu-btn")?.addEventListener("click", () => {
+    document.getElementById("token-modal").style.display = "none";
+    const menu = document.getElementById("player-menu");
+    menu.style.display = menu.style.display === "none" ? "" : "none";
+  });
+
+  // Close popups when clicking outside
+  document.addEventListener("click", (e) => {
+    const wrapper = document.getElementById("player-menu-wrapper");
+    const tokenModal = document.getElementById("token-modal");
+    const debugMenu = document.getElementById("debug-menu");
+    const debugBtn = document.getElementById("debug-btn");
+    if (wrapper && !wrapper.contains(e.target) && !tokenModal.contains(e.target)) {
+      document.getElementById("player-menu").style.display = "none";
+      tokenModal.style.display = "none";
+    }
+    if (debugMenu && !debugMenu.contains(e.target) && e.target !== debugBtn) {
+      debugMenu.style.display = "none";
+    }
+  });
+
+  // Token
+  document.getElementById("menu-token")?.addEventListener("click", () => {
+    document.getElementById("player-menu").style.display = "none";
+    const modal = document.getElementById("token-modal");
+    modal.style.display = modal.style.display === "none" ? "block" : "none";
+  });
+  // Admin login / logout
+  document.getElementById("menu-admin")?.addEventListener("click", async () => {
+    document.getElementById("player-menu").style.display = "none";
+    if (isAdmin) {
+      // Admin logout — end admin session only, not player session
+      try {
+        await fetch("/session/admin_logout", {
+          method: "DELETE",
+          headers: { "X-CSRF-Token": window.__HELLTOWN__.csrfToken },
+        });
+        isAdmin = false;
+        updateAdminUI();
+      } catch {}
+      return;
+    }
+    document.getElementById("admin-overlay").style.display = "";
+    document.getElementById("admin-password").value = "";
+    document.getElementById("admin-error").textContent = "";
+    document.getElementById("admin-password").focus();
+  });
+
+  document.getElementById("admin-password")?.addEventListener("keydown", async (e) => {
+    if (e.key === "Escape") { document.getElementById("admin-overlay").style.display = "none"; return; }
+    if (e.key !== "Enter") return;
+    const pw = document.getElementById("admin-password").value;
+    if (!pw) return;
+    const errorEl = document.getElementById("admin-error");
+    errorEl.textContent = "";
+    try {
+      const res = await fetch("/session/admin_login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": window.__HELLTOWN__.csrfToken },
+        body: JSON.stringify({ password: pw }),
+      });
+      if (res.ok) {
+        document.getElementById("admin-overlay").style.display = "none";
+        isAdmin = true;
+        updateAdminUI();
+      } else {
+        errorEl.textContent = "Invalid password";
+      }
+    } catch { errorEl.textContent = "Connection error"; }
+  });
+
+  document.getElementById("admin-cancel")?.addEventListener("click", () => {
+    document.getElementById("admin-overlay").style.display = "none";
+  });
+
+  // Map Editor (admin only, new tab)
+  document.getElementById("menu-editor")?.addEventListener("click", () => {
+    document.getElementById("player-menu").style.display = "none";
+    if (isAdmin) window.open("/editor", "_blank");
+  });
+
+  // Logout
+  document.getElementById("menu-logout")?.addEventListener("click", async () => {
+    document.getElementById("player-menu").style.display = "none";
+    await fetch("/session", { method: "DELETE" });
+    window.location.reload();
+  });
+
+  // --- Settings ---
+  window.__HELLTOWN_SETTINGS__ = { micEnabled: false, videoEnabled: false };
+
+  // Check existing permissions on load
+  async function checkExistingPermissions() {
+    try {
+      const micPerm = await navigator.permissions.query({ name: "microphone" });
+      const camPerm = await navigator.permissions.query({ name: "camera" });
+      if (micPerm.state === "granted") {
+        window.__HELLTOWN_SETTINGS__.micEnabled = true;
+        updateSettingsToggle("settings-mic", true);
+      }
+      if (camPerm.state === "granted") {
+        window.__HELLTOWN_SETTINGS__.videoEnabled = true;
+        updateSettingsToggle("settings-video", true);
+      }
+      updateSettingsWarning();
+    } catch {}
+  }
+
+  window.updateSettingsToggle = updateSettingsToggle;
+  window.updateSettingsWarning = updateSettingsWarning;
+
+  function updateSettingsToggle(id, enabled) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.dataset.enabled = enabled ? "true" : "false";
+    btn.textContent = enabled ? "Disable" : "Enable";
+    btn.classList.toggle("enabled", enabled);
+  }
+
+  function updateSettingsWarning() {
+    const s = window.__HELLTOWN_SETTINGS__;
+    const warn = document.getElementById("settings-warning");
+    if (warn) warn.style.display = (!s.micEnabled && !s.videoEnabled) ? "" : "none";
+  }
+
+  document.getElementById("menu-settings")?.addEventListener("click", () => {
+    document.getElementById("player-menu").style.display = "none";
+    document.getElementById("settings-overlay").style.display = "";
+  });
+
+  document.getElementById("settings-close")?.addEventListener("click", () => {
+    document.getElementById("settings-overlay").style.display = "none";
+  });
+
+  document.getElementById("settings-mic")?.addEventListener("click", async () => {
+    const s = window.__HELLTOWN_SETTINGS__;
+    if (!s.micEnabled) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(t => t.stop());
+        s.micEnabled = true;
+        updateSettingsToggle("settings-mic", true);
+      } catch { return; }
+    } else {
+      s.micEnabled = false;
+      updateSettingsToggle("settings-mic", false);
+    }
+    updateSettingsWarning();
+  });
+
+  document.getElementById("settings-video")?.addEventListener("click", async () => {
+    const s = window.__HELLTOWN_SETTINGS__;
+    if (!s.videoEnabled) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        stream.getTracks().forEach(t => t.stop());
+        s.videoEnabled = true;
+        updateSettingsToggle("settings-video", true);
+      } catch { return; }
+    } else {
+      s.videoEnabled = false;
+      updateSettingsToggle("settings-video", false);
+    }
+    updateSettingsWarning();
+  });
+
+  if (window.__HELLTOWN__.user) checkExistingPermissions();
+
+  // --- Debug ---
+  document.getElementById("debug-btn")?.addEventListener("click", () => {
+    const menu = document.getElementById("debug-menu");
+    if (menu) menu.style.display = menu.style.display === "none" ? "block" : "none";
+  });
+
+  document.getElementById("debug-tile-overlay")?.addEventListener("change", (e) => {
+    window.__HELLTOWN_DEBUG__.tileOverlay = e.target.checked;
+  });
+
+  document.getElementById("debug-regen-map")?.addEventListener("click", async () => {
+    const maps = window.__HELLTOWN__.maps;
+    if (!maps || maps.length === 0) return;
+    await fetch(`/api/maps/${maps[0].id}/regenerate`, { method: "POST" });
+    window.location.reload();
+  });
+</script>
